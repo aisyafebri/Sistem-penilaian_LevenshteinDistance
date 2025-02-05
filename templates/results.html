@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hasil Penilaian Soal Esai</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 1200px;
+            margin-top: 30px;
+        }
+        .result-card {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .total-score {
+            font-size: 24px;
+            font-weight: bold;
+            color: #0d6efd;
+        }
+        .matching-words {
+            color: #198754;
+            font-weight: 500;
+        }
+        .table th {
+            background-color: #f8f9fa;
+        }
+        .table-responsive {
+            margin-top: 20px;
+        }
+        .score-box {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .method-comparison {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 30px;
+        }
+        .method-box {
+            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            width: 45%;
+        }
+        .levenshtein-box {
+            background-color: #e3f2fd;
+        }
+        .jaro-winkler-box {
+            background-color: #f3e5f5;
+        }
+        .algorithm-explanation {
+            margin: 30px 0;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .levenshtein-explanation {
+            background-color: #e3f2fd;
+            border-left: 5px solid #1976d2;
+        }
+        .jaro-winkler-explanation {
+            background-color: #f3e5f5;
+            border-left: 5px solid #9c27b0;
+        }
+        .explanation-title {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        .formula {
+            background-color: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: monospace;
+        }
+        .table-title {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        .levenshtein-table {
+            border: 2px solid #1976d2;
+        }
+        .jaro-winkler-table {
+            border: 2px solid #9c27b0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">Hasil Penilaian</h1>
+        
+        <div class="method-comparison">
+            <div class="method-box levenshtein-box">
+                <h4>Metode Levenshtein</h4>
+                <h3>{{ total_levenshtein_score }} / {{ max_score }}</h3>
+                <p class="mb-0">Berbasis jarak edit minimum</p>
+            </div>
+            <div class="method-box jaro-winkler-box">
+                <h4>Metode Jaro-Winkler</h4>
+                <h3>{{ total_jaro_winkler_score }} / {{ max_score }}</h3>
+                <p class="mb-0">Berbasis kesamaan string</p>
+            </div>
+        </div>
+
+        <!-- Penjelasan Algoritma Levenshtein -->
+        <div class="algorithm-explanation levenshtein-explanation">
+            <h4 class="explanation-title">Algoritma Levenshtein Distance</h4>
+            <p>Levenshtein Distance mengukur jarak edit minimum antara dua string dengan menghitung jumlah operasi minimum yang diperlukan untuk mengubah satu string menjadi string lain.</p>
+            
+            <h5>Operasi yang Diperbolehkan:</h5>
+            <ul>
+                <li><strong>Insertion (Penyisipan)</strong>: Menambah karakter</li>
+                <li><strong>Deletion (Penghapusan)</strong>: Menghapus karakter</li>
+                <li><strong>Substitution (Penggantian)</strong>: Mengganti satu karakter dengan karakter lain</li>
+            </ul>
+
+            <div class="formula">
+                Skor = 1 - (jumlah_operasi / panjang_string_terpanjang)
+            </div>
+        </div>
+
+        <!-- Tabel Hasil Levenshtein -->
+        <h4 class="table-title text-primary">Hasil Penilaian Levenshtein Distance</h4>
+        <div class="table-responsive">
+            <table class="table table-striped table-bordered levenshtein-table">
+                <thead class="table-primary">
+                    <tr>
+                        <th>No</th>
+                        <th>Soal</th>
+                        <th>Kunci Jawaban</th>
+                        <th>Jawaban Siswa</th>
+                        <th>Jarak Levenshtein</th>
+                        <th>Operasi</th>
+                        <th>Skor</th>
+                        <th>Kata yang Cocok</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for hasil in hasil_penilaian %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ hasil.soal }}</td>
+                        <td>{{ hasil.kunci_jawaban }}</td>
+                        <td>{{ hasil.jawaban_siswa }}</td>
+                        <td>{{ hasil.levenshtein_distance }}</td>
+                        <td>{{ ", ".join(hasil.levenshtein_operations) }}</td>
+                        <td>{{ hasil.levenshtein_score }}</td>
+                        <td>{{ ", ".join(hasil.matching_words) if hasil.matching_words else "Tidak ada kata yang cocok" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Penjelasan Algoritma Jaro-Winkler -->
+        <div class="algorithm-explanation jaro-winkler-explanation">
+            <h4 class="explanation-title">Algoritma Jaro-Winkler</h4>
+            <p>Jaro-Winkler adalah pengembangan dari algoritma Jaro Distance yang memberikan skor lebih tinggi untuk string yang memiliki kesamaan di awal (prefix).</p>
+            
+            <h5>Komponen Perhitungan:</h5>
+            <ul>
+                <li><strong>Jaro Distance</strong>: Menghitung kesamaan dasar dengan mempertimbangkan:
+                    <ul>
+                        <li>Jumlah karakter yang sama (m)</li>
+                        <li>Jumlah transposisi (t)</li>
+                        <li>Panjang string (|s1| dan |s2|)</li>
+                    </ul>
+                </li>
+                <li><strong>Winkler Modification</strong>: Meningkatkan skor untuk string yang memiliki prefix sama (maksimal 4 karakter)</li>
+            </ul>
+
+            <div class="formula">
+                Jaro = (m/|s1| + m/|s2| + (m-t)/m) / 3<br>
+                Jaro-Winkler = Jaro + (p × (1 - Jaro) × prefix_length)<br>
+                dimana p = 0.1 (scaling factor)
+            </div>
+        </div>
+
+        <!-- Tabel Hasil Jaro-Winkler -->
+        <h4 class="table-title text-purple">Hasil Penilaian Jaro-Winkler</h4>
+        <div class="table-responsive">
+            <table class="table table-striped table-bordered jaro-winkler-table">
+                <thead style="background-color: #f3e5f5;">
+                    <tr>
+                        <th>No</th>
+                        <th>Soal</th>
+                        <th>Kunci Jawaban</th>
+                        <th>Jawaban Siswa</th>
+                        <th>Operasi Jaro-Winkler</th>
+                        <th>Skor</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for hasil in hasil_penilaian %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ hasil.soal }}</td>
+                        <td>{{ hasil.kunci_jawaban }}</td>
+                        <td>{{ hasil.jawaban_siswa }}</td>
+                        <td>{{ ", ".join(hasil.jaro_winkler_operations) }}</td>
+                        <td>{{ hasil.jaro_winkler_score }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="text-center">
+            <a href="{{ url_for('index') }}" class="btn btn-primary">Coba Lagi</a>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
