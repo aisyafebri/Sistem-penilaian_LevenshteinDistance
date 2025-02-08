@@ -3,9 +3,19 @@ import pandas as pd
 import random
 import re
 import string
+from sentence_transformers import SentenceTransformer, util
+import torch
+import os
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-123'  # Needed for session
+
+# Initialize the semantic model at startup
+try:
+    semantic_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+except Exception as e:
+    print(f"Warning: Could not load semantic model: {str(e)}")
+    semantic_model = None
 
 # Fungsi untuk membersihkan teks dari tanda baca dan mengubah ke lowercase
 def clean_text(text):
@@ -140,9 +150,9 @@ def jaro_similarity(s1, s2):
     j = 0
     for i in range(len(s1)):
         if s1_matches[i]:
-            while not s2_matches[j]:
+            while j < len(s2) and not s2_matches[j]:
                 j += 1
-            if s1[i] != s2[j]:
+            if j < len(s2) and s1[i] != s2[j]:
                 transpositions += 1
             j += 1
     
@@ -249,49 +259,73 @@ def get_jaro_winkler_details(s1, s2):
         'operations': operations
     }
 
+def calculate_semantic_similarity(s1, s2):
+    """
+    Menghitung semantic similarity antara dua teks menggunakan model BERT.
+    
+    Args:
+        s1 (str): Teks pertama
+        s2 (str): Teks kedua
+    
+    Returns:
+        float: Nilai similarity antara 0 dan 1
+    """
+    if semantic_model is None:
+        print("Warning: Semantic model not available, falling back to text similarity")
+        return jaro_winkler_similarity(s1, s2)  # Fallback to Jaro-Winkler
+        
+    try:
+        # Encode kedua teks
+        embedding1 = semantic_model.encode(s1, convert_to_tensor=True)
+        embedding2 = semantic_model.encode(s2, convert_to_tensor=True)
+        
+        # Hitung cosine similarity
+        similarity = util.pytorch_cos_sim(embedding1, embedding2)
+        
+        return float(similarity[0][0])  # Convert tensor to float
+    except Exception as e:
+        print(f"Error in semantic similarity calculation: {str(e)}")
+        return jaro_winkler_similarity(s1, s2)  # Fallback to Jaro-Winkler
+
 def automatic_grading_combined(key_answer, student_answer, max_score=1.0):
     """
-    Menghitung skor menggunakan kedua metode: Levenshtein dan Jaro-Winkler
+    Menghitung skor menggunakan kombinasi Levenshtein, Jaro-Winkler, dan Semantic Similarity
     """
     # Bersihkan teks
     clean_key = clean_text(key_answer)
     clean_student = clean_text(student_answer)
     
-    # 1. Levenshtein Distance scoring
-    key_words = set(clean_key.split())
-    student_words = set(clean_student.split())
-    matching_words = key_words.intersection(student_words)
+    # Hitung Levenshtein distance dan normalisasi
+    lev_distance, _ = levenshtein_distance(clean_key, clean_student)
+    max_len = max(len(clean_key), len(clean_student))
+    lev_similarity = 1 - (lev_distance / max_len if max_len > 0 else 0)
     
-    if matching_words:
-        base_score = 0.3
-        word_match_score = len(matching_words) / len(key_words) * 0.7
-        levenshtein_score = min(base_score + word_match_score, max_score)
-    else:
-        distance, ops = levenshtein_distance(clean_key, clean_student)
-        max_possible_distance = max(len(clean_key), len(clean_student))
-        if max_possible_distance == 0:
-            levenshtein_score = 0
-        else:
-            similarity = 1 - (distance / max_possible_distance)
-            levenshtein_score = similarity * max_score
+    # Hitung Jaro-Winkler similarity
+    jw_similarity = jaro_winkler_similarity(clean_key, clean_student)
     
-    # 2. Jaro-Winkler scoring dan detail
-    jaro_winkler_score = jaro_winkler_similarity(clean_key, clean_student) * max_score
-    jaro_details = get_jaro_winkler_details(clean_key, clean_student)
+    # Hitung semantic similarity
+    semantic_sim = calculate_semantic_similarity(key_answer, student_answer)
     
-    # Get Levenshtein details
-    distance, ops = levenshtein_distance(clean_key, clean_student)
+    # Kombinasikan semua metrik dengan bobot
+    # Berikan bobot lebih tinggi untuk semantic similarity
+    combined_score = (0.25 * lev_similarity + 
+                     0.25 * jw_similarity + 
+                     0.5 * semantic_sim)  # Semantic similarity memiliki bobot 50%
+    
+    # Normalisasi skor akhir
+    final_score = combined_score * max_score
     
     return {
-        'levenshtein_score': round(levenshtein_score, 2),
-        'jaro_winkler_score': round(jaro_winkler_score, 2),
-        'levenshtein_distance': distance,
-        'levenshtein_operations': ops,
-        'matching_words': list(matching_words),
-        'jaro_winkler_operations': jaro_details['operations'],
-        'jaro_matching_chars': jaro_details['matching_chars'],
-        'jaro_transpositions': jaro_details['transpositions'],
-        'jaro_prefix_length': jaro_details['prefix_length']
+        'score': round(final_score, 2),
+        'levenshtein_similarity': round(lev_similarity, 3),
+        'jaro_winkler_similarity': round(jw_similarity, 3),
+        'semantic_similarity': round(semantic_sim, 3),
+        'explanation': {
+            'levenshtein': f"Levenshtein Similarity: {round(lev_similarity * 100, 1)}%",
+            'jaro_winkler': f"Jaro-Winkler Similarity: {round(jw_similarity * 100, 1)}%",
+            'semantic': f"Semantic Similarity: {round(semantic_sim * 100, 1)}%",
+            'final': f"Final Score: {round(final_score, 2)} / {max_score}"
+        }
     }
 
 # Fungsi penilaian otomatis dengan tampilan operasi
@@ -380,20 +414,18 @@ def submit_answers():
             # Hitung skor dengan kedua metode
             scores = automatic_grading_combined(kunci_jawaban, jawaban_siswa)
             
-            total_levenshtein_score += scores['levenshtein_score']
-            total_jaro_winkler_score += scores['jaro_winkler_score']
+            total_levenshtein_score += scores['levenshtein_similarity']
+            total_jaro_winkler_score += scores['jaro_winkler_similarity']
             
             # Simpan hasil
             hasil_penilaian.append({
                 'soal': soal['Soal'],
                 'kunci_jawaban': kunci_jawaban,
                 'jawaban_siswa': jawaban_siswa,
-                'levenshtein_distance': scores['levenshtein_distance'],
-                'levenshtein_operations': scores['levenshtein_operations'],
-                'levenshtein_score': scores['levenshtein_score'],
-                'jaro_winkler_score': scores['jaro_winkler_score'],
-                'jaro_winkler_operations': scores['jaro_winkler_operations'],
-                'matching_words': scores['matching_words']
+                'levenshtein_similarity': scores['levenshtein_similarity'],
+                'jaro_winkler_similarity': scores['jaro_winkler_similarity'],
+                'semantic_similarity': scores['semantic_similarity'],
+                'explanation': scores['explanation']
             })
         
         return render_template('results.html', 
